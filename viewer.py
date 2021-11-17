@@ -35,18 +35,40 @@ class Viewer(QMainWindow):
         self.width = 100
         self.height = 100
 
-        self.loaded = False
-        self.mesh_loader = MeshLoader()
-
+        # image box
         self.imageLabel = QLabel()
-        if allow_resize:
-            self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.setCentralWidget(self.imageLabel)
+        self._init_image_box(allow_resize)
+
+        # default mesh on startup
+        self.mesh_loader = MeshLoader()
         self.display_rendered_image(filepath=cow_obj_filepath)
+
+        self._init_ui()
+
+    def _init_ui(self):
+        self._init_menu_bar()
+
+        self._init_status_bar()
 
         self.setWindowTitle("Viewer")
         self.resize(self.width, self.height)
         self.show()
+
+    def _init_image_box(self, allow_resize: bool):
+        if allow_resize:
+            self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+        self.setCentralWidget(self.imageLabel)
+
+    def _init_menu_bar(self):
+        menu_bar = self.menuBar()
+        label = 'TEST'
+        menu_bar.addMenu(label)
+
+    def _init_status_bar(self):
+        status_bar = self.statusBar()
+        label = QLabel('Test text for status bar.')
+        status_bar.addWidget(label)
 
     def display_rendered_image(self, filepath):
         image = self.mesh_loader.get_rendered_image(filepath)
