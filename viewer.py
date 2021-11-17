@@ -7,6 +7,9 @@ from PyQt5.QtWidgets import QSizePolicy
 from MeshLoader import MeshLoader
 
 
+cow_obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
+
+
 def _img_to_pixmap(im: np.ndarray, copy: bool = False):
     assert len(im.shape) == 3
     height, width, n_channels = im.shape
@@ -39,21 +42,24 @@ class Viewer(QMainWindow):
         if allow_resize:
             self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.setCentralWidget(self.imageLabel)
-        self._init_mesh()
+        self.display_rendered_image(filepath=cow_obj_filepath)
 
         self.setWindowTitle("Viewer")
         self.resize(self.width, self.height)
         self.show()
 
-    def load_img(self, filepath='/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'):
-        return self.mesh_loader.get_texture_map(filepath)
+    def display_rendered_image(self, filepath):
+        image = self.mesh_loader.get_rendered_image(filepath)
+        self._display_image(image)
 
-    def _init_mesh(self):
-        image = self.load_img()
+    def display_texture_map(self, filepath):
+        image = self.mesh_loader.get_texture_map(filepath)
+        self._display_image(image)
+
+    def _display_image(self, image):
         pixmap = _img_to_pixmap(image)
 
         self.imageLabel.setPixmap(pixmap)
 
         self.width = pixmap.width()
         self.height = pixmap.height()
-
