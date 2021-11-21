@@ -1,13 +1,14 @@
+import os
 import numpy as np
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtWidgets import QMainWindow, QLabel
-from PyQt5.QtWidgets import QSizePolicy
+from PyQt5.QtWidgets import *
 
 from MeshLoader import MeshLoader
 
-
-cow_obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
+obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
+obj_filename = os.path.basename(obj_filepath)
 
 
 def _img_to_pixmap(im: np.ndarray, copy: bool = False):
@@ -36,18 +37,18 @@ class Viewer(QMainWindow):
         self.height = 100
 
         # image box
-        self.imageLabel = QLabel()
+        self._image_box = QLabel()
         self._init_image_box(allow_resize)
 
         # default mesh on startup
+        self.filepath = obj_filepath
+        self.filename = obj_filename
         self.mesh_loader = MeshLoader()
-        self.mesh_loader.load_file(filepath=cow_obj_filepath)
+        self.mesh_loader.load_file(filepath=obj_filepath)
 
         # camera params
-        self._distance = 2.7
-        self._elevation = 10
-        self._azimuth = -150
-        self.camera_params = [self._distance, self._elevation, self._azimuth]
+        self.light_location = [0., 0., -3.]
+        self.camera_params = [2.7, 10, -150]
         self.display_rendered_image()
 
         # position
@@ -56,29 +57,61 @@ class Viewer(QMainWindow):
         self._init_ui()
 
     def _init_ui(self):
-        self._init_menu_bar()
-
+        # self._init_menu_bar()
+        # self._init_tool_bar()
+        self._init_light_widget()
         self._init_status_bar()
 
-        self.setWindowTitle("Viewer")
+        self.setWindowTitle(f"Viewer - {self.filepath}")
         self.resize(self.width, self.height)
         self.show()
-
-    def _init_image_box(self, allow_resize: bool):
-        if allow_resize:
-            self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-
-        self.setCentralWidget(self.imageLabel)
 
     def _init_menu_bar(self):
         menu_bar = self.menuBar()
         label = 'TEST'
         menu_bar.addMenu(label)
 
+    def _init_tool_bar(self):
+        file_tool_bar = QToolBar("File")
+        file_tool_bar.addWidget(QLabel("File: "))
+        file_tool_bar.addWidget(QLabel(f'{self.filename}'))
+
+        self._file_tool_bar = self.addToolBar(file_tool_bar)
+
+    def _init_light_widget(self):
+        form_layout = QFormLayout()
+
+        self._user_light_x = QLineEdit(str(self.light_location[0]))
+        self._user_light_y = QLineEdit(str(self.light_location[1]))
+        self._user_light_z = QLineEdit(str(self.light_location[2]))
+        apply_button = QPushButton('Apply')
+
+        form_layout.addRow('x', self._user_light_x)
+        form_layout.addRow('y', self._user_light_y)
+        form_layout.addRow('z', self._user_light_z)
+        form_layout.addRow(apply_button)
+        apply_button.clicked.connect(self.user_set_light_location)
+
+        group_box = QGroupBox('Light location')
+        group_box.setLayout(form_layout)
+
+        self._light_widget = QDockWidget('Lights')
+        self._light_widget.setFloating(False)
+        self._light_widget.setWidget(group_box)
+
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._light_widget)
+
     def _init_status_bar(self):
-        status_bar = self.statusBar()
-        label = QLabel('Test text for status bar.')
-        status_bar.addWidget(label)
+        self._status_bar = self.statusBar()
+        self._status_bar.showMessage(self.camera_params_string)
+
+    def _init_image_box(self, allow_resize: bool):
+        if allow_resize:
+            self._image_box.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+        self._image_box.setAlignment(Qt.AlignCenter)
+
+        self.setCentralWidget(self._image_box)
 
     def display_rendered_image(self):
         image = self.mesh_loader.render()
@@ -91,23 +124,18 @@ class Viewer(QMainWindow):
     def _display_image(self, image):
         pixmap = _img_to_pixmap(image)
 
-        self.imageLabel.setPixmap(pixmap)
+        self._image_box.setPixmap(pixmap)
 
         self.width = pixmap.width()
         self.height = pixmap.height()
 
-    @property
-    def camera_params(self):
-        return self.mesh_loader.camera_params
+    def user_set_light_location(self):
+        x = float(self._user_light_x.text())
+        y = float(self._user_light_y.text())
+        z = float(self._user_light_z.text())
 
-    @camera_params.setter
-    def camera_params(self, value: list):
-        self._distance, self._elevation, self._azimuth = value
-        self.mesh_loader.camera_params = value
-
-    @property
-    def is_loaded(self):
-        return self.mesh_loader.is_loaded
+        self.light_location = [x, y, z]
+        self.display_rendered_image()
 
     def mousePressEvent(self, e):
         self.prev_pos = (e.x(), e.y())
@@ -119,11 +147,56 @@ class Viewer(QMainWindow):
         dist, elev, azim = self.camera_params
 
         # Adjust rotation speed
-        azim = azim + (self.prev_pos[0] - e.x())*0.1
-        elev = elev - (self.prev_pos[1] - e.y())*0.1
+        azim = azim + (self.prev_pos[0] - e.x()) * 0.25
+        elev = elev - (self.prev_pos[1] - e.y()) * 0.25
 
         self.camera_params = [dist, elev, azim]
+
+        self._status_bar.clearMessage()
+        self._status_bar.showMessage(self.camera_params_string)
 
         self.display_rendered_image()
 
         self.prev_pos = (e.x(), e.y())
+
+    def wheelEvent(self, e):
+        if not self.is_loaded:
+            return
+
+        dist, elev, azim = self.camera_params
+
+        # Adjust rotation speed
+        dist = dist - e.angleDelta().y() * 0.01
+
+        self.camera_params = [dist, elev, azim]
+
+        self._status_bar.clearMessage()
+        self._status_bar.showMessage(self.camera_params_string)
+
+        self.display_rendered_image()
+
+    @property
+    def light_location(self):
+        return self.mesh_loader.light_location
+
+    @light_location.setter
+    def light_location(self, value):
+        self.mesh_loader.light_location = value
+
+    @property
+    def camera_params(self):
+        return self.mesh_loader.camera_params
+
+    @camera_params.setter
+    def camera_params(self, value: list):
+        self.mesh_loader.camera_params = value
+
+    @property
+    def camera_params_string(self):
+        return f'Distance: {self.camera_params[0]:000.1f} | ' \
+               + f'Azimuth: {self.camera_params[1]:000.0f} | ' \
+               + f'Elevation: {self.camera_params[2]:000.0f}'
+
+    @property
+    def is_loaded(self):
+        return self.mesh_loader.is_loaded
