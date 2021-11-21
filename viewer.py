@@ -108,3 +108,22 @@ class Viewer(QMainWindow):
     @property
     def is_loaded(self):
         return self.mesh_loader.is_loaded
+
+    def mousePressEvent(self, e):
+        self.prev_pos = (e.x(), e.y())
+
+    def mouseMoveEvent(self, e):
+        if not self.is_loaded:
+            return
+
+        dist, elev, azim = self.camera_params
+
+        # Adjust rotation speed
+        azim = azim + (self.prev_pos[0] - e.x())*0.1
+        elev = elev - (self.prev_pos[1] - e.y())*0.1
+
+        self.camera_params = [dist, elev, azim]
+
+        self.display_rendered_image()
+
+        self.prev_pos = (e.x(), e.y())
