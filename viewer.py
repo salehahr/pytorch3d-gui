@@ -41,7 +41,17 @@ class Viewer(QMainWindow):
 
         # default mesh on startup
         self.mesh_loader = MeshLoader()
-        self.display_rendered_image(filepath=cow_obj_filepath)
+        self.mesh_loader.load_file(filepath=cow_obj_filepath)
+
+        # camera params
+        self._distance = 2.7
+        self._elevation = 10
+        self._azimuth = -150
+        self.camera_params = [self._distance, self._elevation, self._azimuth]
+        self.display_rendered_image()
+
+        # position
+        self.prev_pos = (0, 0)
 
         self._init_ui()
 
@@ -70,12 +80,12 @@ class Viewer(QMainWindow):
         label = QLabel('Test text for status bar.')
         status_bar.addWidget(label)
 
-    def display_rendered_image(self, filepath):
-        image = self.mesh_loader.get_rendered_image(filepath)
+    def display_rendered_image(self):
+        image = self.mesh_loader.render()
         self._display_image(image)
 
-    def display_texture_map(self, filepath):
-        image = self.mesh_loader.get_texture_map(filepath)
+    def display_texture_map(self):
+        image = self.mesh_loader.get_texture_map()
         self._display_image(image)
 
     def _display_image(self, image):
@@ -85,3 +95,16 @@ class Viewer(QMainWindow):
 
         self.width = pixmap.width()
         self.height = pixmap.height()
+
+    @property
+    def camera_params(self):
+        return self.mesh_loader.camera_params
+
+    @camera_params.setter
+    def camera_params(self, value: list):
+        self._distance, self._elevation, self._azimuth = value
+        self.mesh_loader.camera_params = value
+
+    @property
+    def is_loaded(self):
+        return self.mesh_loader.is_loaded

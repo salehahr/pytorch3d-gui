@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from pytorch3d.io import load_obj, load_objs_as_meshes
+from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.renderer import FoVPerspectiveCameras, look_at_view_transform, \
     RasterizationSettings, PointLights, MeshRasterizer, MeshRenderer, SoftPhongShader
 
@@ -9,57 +9,117 @@ from pytorch3d.renderer import FoVPerspectiveCameras, look_at_view_transform, \
 class MeshLoader(object):
     def __init__(self,
                  device: str = 'cuda:0'):
-        self.device = torch.device(device)
-        torch.cuda.set_device(self.device)
+        self._device = torch.device(device)
+        torch.cuda.set_device(self._device)
 
-        self.image_size: int = 0
+        self._image_size: int = 512
+        self._is_loaded = False
 
         # camera
-        R, T = look_at_view_transform(dist=2.7, elev=0, azim=180)
-        self.cameras = FoVPerspectiveCameras(device=self.device, R=R, T=T)
+        self._distance = 2.7
+        self._elevation = 0
+        self._azimuth = 180
+        self._cameras = FoVPerspectiveCameras(device=self._device)
 
-        # lights
-        self.lights = PointLights(device=self.device,
-                                  location=[[0.0, 0.0, -3.0]])
+        # _lights
+        self._light_location = [0.0, 0.0, -3.0]
+        self._lights = None
+        self._initialise_lights()
 
-    def get_texture_map(self, filepath: str) -> np.ndarray:
-        mesh = self._get_mesh(filepath)
-        texture_image = mesh.textures.maps_padded() * 255
-        np_img = texture_image.squeeze().cpu().numpy().astype(np.uint8)
+        # renderer
+        self._raster_settings = RasterizationSettings(
+            image_size=self._image_size,
+            blur_radius=0.0,
+            faces_per_pixel=1,
+        )
+        self._renderer = None
+        self._initialise_renderer()
 
-        self.image_size = max(np_img.shape[0:2])
+        # mesh
+        self._mesh = None
 
-        return np_img
+    def _initialise_lights(self):
+        self._lights = PointLights(device=self._device,
+                                   location=[self._light_location])
 
-    def get_rendered_image(self, filepath: str):
-        mesh = self._get_mesh(filepath)
+    def _initialise_renderer(self):
+        self._renderer = MeshRenderer(
+            rasterizer=MeshRasterizer(
+                cameras=self._cameras,
+                raster_settings=self._raster_settings
+            ),
+            shader=SoftPhongShader(
+                device=self._device,
+                cameras=self._cameras,
+                lights=self._lights
+            )
+        )
 
-        image_size = 512
-        renderer = self._generate_renderer(image_size)
+    def load_file(self, filepath: str):
+        self._mesh = load_objs_as_meshes([filepath], device=self._device)
+        self._is_loaded = True
 
-        image_tensor = renderer(mesh)
+    def render(self, camera_params=None):
+        if camera_params:
+            self.camera_params = camera_params
+        return self._get_rendered_image()
+
+    def _get_rendered_image(self):
+        image_tensor = self._renderer(self._mesh)
         np_image = image_tensor[0, ..., :3].cpu().numpy() * 255
 
         return np.uint8(np_image)
 
-    def _get_mesh(self, filepath: str):
-        return load_objs_as_meshes([filepath], device=self.device)
+    def get_texture_map(self) -> np.ndarray:
+        texture_image = self._mesh.textures.maps_padded() * 255
+        np_img = texture_image.squeeze().cpu().numpy().astype(np.uint8)
 
-    def _generate_renderer(self, image_size: int):
-        raster_settings = RasterizationSettings(
-            image_size=image_size,
-            blur_radius=0.0,
-            faces_per_pixel=1,
-        )
+        self._image_size = max(np_img.shape[0:2])
 
-        return MeshRenderer(
-            rasterizer=MeshRasterizer(
-                cameras=self.cameras,
-                raster_settings=raster_settings
-            ),
-            shader=SoftPhongShader(
-                device=self.device,
-                cameras=self.cameras,
-                lights=self.lights
-            )
-        )
+        return np_img
+
+    @property
+    def light_location(self):
+        return self._light_location
+
+    @light_location.setter
+    def light_location(self, value):
+        self._light_location = value
+        self.lights = PointLights(device=self._device,
+                                  location=[value])
+
+    @property
+    def lights(self):
+        return self._lights
+
+    @lights.setter
+    def lights(self, value):
+        self._lights = value
+        if self._renderer:
+            self._renderer.shader.lights = self._lights
+
+    @property
+    def camera_params(self):
+        return self._distance, self._elevation, self._azimuth
+
+    @camera_params.setter
+    def camera_params(self, value: list):
+        self._distance, self._elevation, self._azimuth = value
+
+        rot, trans = look_at_view_transform(*self.camera_params)
+        self.cameras = FoVPerspectiveCameras(device=self._device, R=rot, T=trans)
+
+    @property
+    def cameras(self):
+        return self._cameras
+
+    @cameras.setter
+    def cameras(self, value):
+        self._cameras = value
+        if self._renderer:
+            self._renderer.rasterizer.cameras = value
+            self._renderer.shader.cameras = value
+
+    @property
+    def is_loaded(self):
+        return self._is_loaded
