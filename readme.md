@@ -1,3 +1,5 @@
 # pytorch3d-gui
 
-![](preview.png)
+| &nbsp; | &nbsp; |
+| --- | --- |
+| ![](img/preview.png) | ![eine kuh macht muh](img/hiwi-cow.gif) |
