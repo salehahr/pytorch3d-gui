@@ -2,4 +2,4 @@
 
 | &nbsp; | &nbsp; |
 | --- | --- |
-| ![](img/preview.png) | ![eine kuh macht muh](img/hiwi-cow.gif) |
+| ![](img/preview.png) | ![eine kuh macht muh](img/cow-lights.gif) |
