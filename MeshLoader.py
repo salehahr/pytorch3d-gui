@@ -22,7 +22,6 @@ class MeshLoader(object):
         self._cameras = FoVPerspectiveCameras(device=self._device)
 
         # _lights
-        self._light_location = [0.0, 0.0, -3.0]
         self._lights = None
         self._initialise_lights()
 
@@ -40,7 +39,7 @@ class MeshLoader(object):
 
     def _initialise_lights(self):
         self._lights = PointLights(device=self._device,
-                                   location=[self._light_location])
+                                   location=self.light_location)
 
     def _initialise_renderer(self):
         self._renderer = MeshRenderer(
@@ -80,13 +79,11 @@ class MeshLoader(object):
 
     @property
     def light_location(self):
-        return self._light_location
+        return self._cameras.get_camera_center()
 
-    @light_location.setter
-    def light_location(self, value):
-        self._light_location = value
+    def _set_light_location(self):
         self.lights = PointLights(device=self._device,
-                                  location=[value])
+                                  location=self.light_location)
 
     @property
     def lights(self):
@@ -108,6 +105,7 @@ class MeshLoader(object):
 
         rot, trans = look_at_view_transform(*self.camera_params)
         self.cameras = FoVPerspectiveCameras(device=self._device, R=rot, T=trans)
+        self._set_light_location()
 
     @property
     def cameras(self):

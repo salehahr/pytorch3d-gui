@@ -48,7 +48,6 @@ class Viewer(QMainWindow):
         self.mesh_loader.load_file(filepath=obj_filepath)
 
         # camera params
-        self.light_location = [0., 0., -3.]
         self.camera_params = [2.7, 10, -150]
         self.display_rendered_image()
 
@@ -151,11 +150,7 @@ class Viewer(QMainWindow):
 
     @property
     def light_location(self):
-        return self.mesh_loader.light_location
-
-    @light_location.setter
-    def light_location(self, value):
-        self.mesh_loader.light_location = value
+        return self.mesh_loader.light_location.cpu().numpy()[0]
 
     @property
     def camera_params(self):

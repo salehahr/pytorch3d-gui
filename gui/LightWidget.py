@@ -35,8 +35,7 @@ class LightWidget(QDockWidget):
         return light_location_box
 
     def user_set_light_location(self):
-        self._main_window.light_location = self.light_location
-        self._main_window.display_rendered_image()
+        pass
 
     @property
     def light_location(self):
