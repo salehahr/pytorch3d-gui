@@ -6,6 +6,7 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import *
 
 from MeshLoader import MeshLoader
+from gui import LightWidget
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)
@@ -79,26 +80,7 @@ class Viewer(QMainWindow):
         self._file_tool_bar = self.addToolBar(file_tool_bar)
 
     def _init_light_widget(self):
-        form_layout = QFormLayout()
-
-        self._user_light_x = QLineEdit(str(self.light_location[0]))
-        self._user_light_y = QLineEdit(str(self.light_location[1]))
-        self._user_light_z = QLineEdit(str(self.light_location[2]))
-        apply_button = QPushButton('Apply')
-
-        form_layout.addRow('x', self._user_light_x)
-        form_layout.addRow('y', self._user_light_y)
-        form_layout.addRow('z', self._user_light_z)
-        form_layout.addRow(apply_button)
-        apply_button.clicked.connect(self.user_set_light_location)
-
-        group_box = QGroupBox('Light location')
-        group_box.setLayout(form_layout)
-
-        self._light_widget = QDockWidget('Lights')
-        self._light_widget.setFloating(False)
-        self._light_widget.setWidget(group_box)
-
+        self._light_widget = LightWidget(self, self.light_location, 'Lights')
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._light_widget)
 
     def _init_status_bar(self):
@@ -128,14 +110,6 @@ class Viewer(QMainWindow):
 
         self.width = pixmap.width()
         self.height = pixmap.height()
-
-    def user_set_light_location(self):
-        x = float(self._user_light_x.text())
-        y = float(self._user_light_y.text())
-        z = float(self._user_light_z.text())
-
-        self.light_location = [x, y, z]
-        self.display_rendered_image()
 
     def mousePressEvent(self, e):
         self.prev_pos = (e.x(), e.y())
