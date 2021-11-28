@@ -1,1 +1,1 @@
-from .LightWidget import LightWidget
+from .CameraParamsWidget import CameraParamsWidget

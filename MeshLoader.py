@@ -17,8 +17,8 @@ class MeshLoader(object):
 
         # camera
         self._distance = 2.7
-        self._elevation = 0
-        self._azimuth = 180
+        self._elevation = 10
+        self._azimuth = 150
         self._cameras = FoVPerspectiveCameras(device=self._device)
 
         # _lights
@@ -53,6 +53,7 @@ class MeshLoader(object):
                 lights=self._lights
             )
         )
+        self.camera_params = self.camera_params
 
     def load_file(self, filepath: str):
         self._mesh = load_objs_as_meshes([filepath], device=self._device)

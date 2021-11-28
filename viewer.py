@@ -6,7 +6,7 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import *
 
 from MeshLoader import MeshLoader
-from gui import LightWidget
+from gui import CameraParamsWidget
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)
@@ -47,14 +47,14 @@ class Viewer(QMainWindow):
         self.mesh_loader = MeshLoader()
         self.mesh_loader.load_file(filepath=obj_filepath)
 
+        self._init_ui()
+
         # camera params
-        self.camera_params = [2.7, 10, -150]
+        self.prev_pos = (0, 0)
         self.display_rendered_image()
 
-        # position
-        self.prev_pos = (0, 0)
-
-        self._init_ui()
+        self.resize(self.width, self.height)
+        self.show()
 
     def _init_ui(self):
         # self._init_menu_bar()
@@ -63,8 +63,6 @@ class Viewer(QMainWindow):
         self._init_status_bar()
 
         self.setWindowTitle(f"Viewer - {self.filepath}")
-        self.resize(self.width, self.height)
-        self.show()
 
     def _init_menu_bar(self):
         menu_bar = self.menuBar()
@@ -79,8 +77,8 @@ class Viewer(QMainWindow):
         self._file_tool_bar = self.addToolBar(file_tool_bar)
 
     def _init_light_widget(self):
-        self._light_widget = LightWidget(self, self.light_location, 'Lights')
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._light_widget)
+        self._camera_params_widget = CameraParamsWidget(self, self.camera_params, 'Camera')
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._camera_params_widget)
 
     def _init_status_bar(self):
         self._status_bar = self.statusBar()
@@ -125,9 +123,6 @@ class Viewer(QMainWindow):
 
         self.camera_params = [dist, elev, azim]
 
-        self._status_bar.clearMessage()
-        self._status_bar.showMessage(self.camera_params_string)
-
         self.display_rendered_image()
 
         self.prev_pos = (e.x(), e.y())
@@ -143,14 +138,7 @@ class Viewer(QMainWindow):
 
         self.camera_params = [dist, elev, azim]
 
-        self._status_bar.clearMessage()
-        self._status_bar.showMessage(self.camera_params_string)
-
         self.display_rendered_image()
-
-    @property
-    def light_location(self):
-        return self.mesh_loader.light_location.cpu().numpy()[0]
 
     @property
     def camera_params(self):
@@ -159,6 +147,10 @@ class Viewer(QMainWindow):
     @camera_params.setter
     def camera_params(self, value: list):
         self.mesh_loader.camera_params = value
+
+        if self._status_bar:
+            self._status_bar.clearMessage()
+            self._status_bar.showMessage(self.camera_params_string)
 
     @property
     def camera_params_string(self):
