@@ -6,7 +6,7 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import *
 
 from . import MeshLoader
-from . import CameraParamsWidget
+from . import Sidebar
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)
@@ -59,7 +59,7 @@ class Viewer(QMainWindow):
     def _init_ui(self):
         # self._init_menu_bar()
         # self._init_tool_bar()
-        self._init_light_widget()
+        self._init_sidebar()
         self._init_status_bar()
 
         self.setWindowTitle(f"Viewer - {self.filepath}")
@@ -76,8 +76,8 @@ class Viewer(QMainWindow):
 
         self._file_tool_bar = self.addToolBar(file_tool_bar)
 
-    def _init_light_widget(self):
-        self._camera_params_widget = CameraParamsWidget(self, self.camera_params, 'Camera')
+    def _init_sidebar(self):
+        self._camera_params_widget = Sidebar(self, self.camera_params, '')
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._camera_params_widget)
 
     def _init_status_bar(self):
@@ -107,6 +107,9 @@ class Viewer(QMainWindow):
 
         self.width = pixmap.width()
         self.height = pixmap.height()
+
+    def differential_render(self):
+        pass
 
     def mousePressEvent(self, e):
         self.prev_pos = (e.x(), e.y())
@@ -148,9 +151,8 @@ class Viewer(QMainWindow):
     def camera_params(self, value: list):
         self.mesh_loader.camera_params = value
 
-        if self._status_bar:
-            self._status_bar.clearMessage()
-            self._status_bar.showMessage(self.camera_params_string)
+        self._status_bar.clearMessage()
+        self._status_bar.showMessage(self.camera_params_string)
 
     @property
     def camera_params_string(self):
