@@ -5,11 +5,13 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import *
 
-from . import MeshLoader
-from . import Sidebar
+from .Sidebar import Sidebar
+from .MeshLoader import MeshLoader
+from .DiffRenderer import DiffRenderer
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)
+device = 'cuda:0'
 
 
 def _img_to_pixmap(im: np.ndarray, copy: bool = False):
@@ -34,8 +36,8 @@ class Viewer(QMainWindow):
                  allow_resize: bool = True):
         super(Viewer, self).__init__()
 
-        self.width = 100
-        self.height = 100
+        self.width = 512
+        self.height = 512
 
         # image box
         self._image_box = QLabel()
@@ -44,8 +46,10 @@ class Viewer(QMainWindow):
         # default mesh on startup
         self.filepath = obj_filepath
         self.filename = obj_filename
-        self.mesh_loader = MeshLoader()
+        self.mesh_loader = MeshLoader(device)
         self.mesh_loader.load_file(filepath=obj_filepath)
+
+        self.diff_renderer = DiffRenderer(self.mesh_loader, device)
 
         self._init_ui()
 
@@ -105,11 +109,11 @@ class Viewer(QMainWindow):
 
         self._image_box.setPixmap(pixmap)
 
-        self.width = pixmap.width()
-        self.height = pixmap.height()
-
     def differential_render(self):
-        pass
+        if not self.is_loaded:
+            return
+
+        self.diff_renderer.render()
 
     def mousePressEvent(self, e):
         self.prev_pos = (e.x(), e.y())
