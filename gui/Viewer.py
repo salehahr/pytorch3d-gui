@@ -5,8 +5,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import *
 
-from MeshLoader import MeshLoader
-from gui import CameraParamsWidget
+from . import MeshLoader
+from . import CameraParamsWidget
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)

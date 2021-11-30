@@ -2,7 +2,7 @@ import sys
 
 from PyQt5.QtWidgets import QApplication
 
-from viewer import Viewer
+from gui import Viewer
 
 
 if __name__ == '__main__':
