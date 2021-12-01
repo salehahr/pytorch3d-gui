@@ -16,6 +16,9 @@ class Sidebar(QDockWidget):
 
         self._init_layout()
 
+        self.width = self.sizeHint().width()
+        self.height = self.sizeHint().height()
+
     def _init_layout(self):
         layout = QVBoxLayout()
         layout.addWidget(self._dea_box)

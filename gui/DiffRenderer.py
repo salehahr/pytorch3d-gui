@@ -3,7 +3,6 @@ from pytorch3d.loss import mesh_edge_loss, mesh_normal_consistency, mesh_laplaci
 
 from tqdm import tqdm
 import numpy as np
-import matplotlib.pyplot as plt
 
 from pytorch3d.renderer import look_at_view_transform, \
     FoVPerspectiveCameras, PointLights, \
@@ -26,9 +25,11 @@ def scale_and_normalise(mesh):
 
 class DiffRenderer(object):
     def __init__(self,
-                 mesh_loader,
+                 main_window,
+                 target_image_renderer,
                  device: str = 'cuda:0'):
         self.device = torch.device(device)
+        self._main_window = main_window
 
         # initial mesh
         initial_mesh = ico_sphere(4, device)
@@ -36,10 +37,8 @@ class DiffRenderer(object):
         num_vertices = initial_vertices_dim[0]
         self._initial_mesh = initial_mesh
 
-        # target mesh
-        self._mesh_loader = mesh_loader
-        self._target_mesh = None
-
+        # target
+        self._target_image_renderer = target_image_renderer
         self.num_views = 20
 
         # renderer
@@ -62,7 +61,7 @@ class DiffRenderer(object):
         # optimiser
         self.num_views_per_iteration = 2
         self.num_iter = 100
-        self.plot_period = 50
+        self.plot_period = 25
         self.optimiser = torch.optim.SGD([self.deform_verts,
                                           self.sphere_verts_rgb],
                                          lr=1.0, momentum=0.9)
@@ -103,8 +102,7 @@ class DiffRenderer(object):
         self.optimise(target_cameras, target_silhouette, target_rgb)
 
     def generate_views(self):
-        self.target_mesh = self._mesh_loader.mesh
-        target_meshes = self._target_mesh.extend(self.num_views)
+        target_meshes = self.target_mesh.extend(self.num_views)
 
         elev = torch.linspace(0, 360, self.num_views)
         azim = torch.linspace(-180, 180, self.num_views)
@@ -116,13 +114,13 @@ class DiffRenderer(object):
                                                     R=rots[None, 1, ...],
                                                     T=trans[None, 1, ...])
         target_cameras = [FoVPerspectiveCameras(device=self.device,
-                                                     R=rots[None, i, ...],
-                                                     T=trans[None, i, ...])
-                               for i in range(self.num_views)]
+                                                R=rots[None, i, ...],
+                                                T=trans[None, i, ...])
+                          for i in range(self.num_views)]
 
-        target_images = self.image_renderer(target_meshes,
-                                            cameras=cameras,
-                                            lights=self.lights)
+        target_images = self._target_image_renderer(target_meshes,
+                                                    cameras=cameras,
+                                                    lights=self.lights)
         silhouette_images = self.renderer_silhouette(target_meshes,
                                                      cameras=cameras,
                                                      lights=self.lights)
@@ -148,6 +146,7 @@ class DiffRenderer(object):
             loss["laplacian"] = mesh_laplacian_smoothing(deformed_mesh, method="uniform")
 
             for j in self.random_views:
+                # learning -- with grad
                 predicted_images = self.renderer_textured(deformed_mesh,
                                                           cameras=target_cameras[j],
                                                           lights=self.lights)
@@ -168,47 +167,27 @@ class DiffRenderer(object):
             loop.set_description("total_loss = %.6f" % sum_loss)
 
             if i % self.plot_period == 0:
+                # inference -- no grad
                 self.render_predicted_image(deformed_mesh, title="iter: %d" % i)
-                plt.show()
 
             sum_loss.backward()
             self.optimiser.step()
 
     def render_predicted_image(self, predicted_mesh, title):
-        inds = range(3)
-
         with torch.no_grad():
-            predicted_images = self.renderer_textured(predicted_mesh)
+            predicted_images = self._target_image_renderer(predicted_mesh)
 
-        plt.figure(figsize=(20, 10))
-        plt.subplot(1, 2, 1)
-        plt.imshow(predicted_images[0, ..., inds].cpu().detach().numpy())
-        plt.title(title)
-        plt.axis("off")
+        image = np.uint8(predicted_images[0, ..., :3].cpu().detach().numpy() * 255)
 
-    @property
-    def mesh_loader(self):
-        return self._mesh_loader
-
-    @mesh_loader.setter
-    def mesh_loader(self, value):
-        self._mesh_loader = value
+        self._main_window.display_rendered_mesh(image)
 
     @property
     def image_size(self):
-        return self._mesh_loader.image_size
-
-    @property
-    def image_renderer(self):
-        return self._mesh_loader.renderer
+        return self._target_image_renderer.image_size
 
     @property
     def target_mesh(self):
-        return self._target_mesh
-
-    @target_mesh.setter
-    def target_mesh(self, mesh):
-        self._target_mesh = scale_and_normalise(mesh)
+        return scale_and_normalise(self._target_image_renderer.mesh)
 
     @property
     def default_camera(self):

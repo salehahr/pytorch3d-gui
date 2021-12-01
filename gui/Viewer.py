@@ -1,12 +1,12 @@
 import os
-import numpy as np
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import *
 
 from .Sidebar import Sidebar
-from .MeshLoader import MeshLoader
+from .Graphics import Graphics, Pane
+
+from .ImageRenderer import ImageRenderer
 from .DiffRenderer import DiffRenderer
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
@@ -14,57 +14,38 @@ obj_filename = os.path.basename(obj_filepath)
 device = 'cuda:0'
 
 
-def _img_to_pixmap(im: np.ndarray, copy: bool = False):
-    assert len(im.shape) == 3
-    height, width, n_channels = im.shape
-
-    qim = QImage()
-
-    if n_channels == 3:
-        _qim = QImage(im.data, width, height, im.strides[0], QImage.Format_RGB888)
-        qim = _qim.copy() if copy else _qim
-
-    elif n_channels == 4:
-        _qim = QImage(im.data, width, height, im.strides[0], QImage.Format_ARGB32)
-        qim = _qim.copy() if copy else _qim
-
-    return QPixmap.fromImage(qim)
-
-
 class Viewer(QMainWindow):
     def __init__(self,
                  allow_resize: bool = True):
         super(Viewer, self).__init__()
 
-        self.width = 512
-        self.height = 512
-
-        # image box
-        self._image_box = QLabel()
-        self._init_image_box(allow_resize)
+        self.image_size = 256
 
         # default mesh on startup
         self.filepath = obj_filepath
         self.filename = obj_filename
-        self.mesh_loader = MeshLoader(device)
-        self.mesh_loader.load_file(filepath=obj_filepath)
+        self.target_image_renderer = ImageRenderer(self.image_size, device)
+        self.target_image_renderer.load_file(filepath=obj_filepath)
 
-        self.diff_renderer = DiffRenderer(self.mesh_loader, device)
+        self.diff_renderer = DiffRenderer(self, self.target_image_renderer, device)
 
-        self._init_ui()
+        self._init_ui(allow_resize)
 
         # camera params
         self.prev_pos = (0, 0)
-        self.display_rendered_image()
+        self.display_target_mesh()
 
-        self.resize(self.width, self.height)
+        self.resize(self.sizeHint())
         self.show()
 
-    def _init_ui(self):
+    def _init_ui(self, allow_resize):
         # self._init_menu_bar()
         # self._init_tool_bar()
         self._init_sidebar()
         self._init_status_bar()
+
+        self._init_graphics_panes(allow_resize)
+        self.setCentralWidget(self._graphics)
 
         self.setWindowTitle(f"Viewer - {self.filepath}")
 
@@ -81,33 +62,26 @@ class Viewer(QMainWindow):
         self._file_tool_bar = self.addToolBar(file_tool_bar)
 
     def _init_sidebar(self):
-        self._camera_params_widget = Sidebar(self, self.camera_params, '')
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._camera_params_widget)
+        self._sidebar = Sidebar(self, self.camera_params, '')
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._sidebar)
 
     def _init_status_bar(self):
         self._status_bar = self.statusBar()
         self._status_bar.showMessage(self.camera_params_string)
 
-    def _init_image_box(self, allow_resize: bool):
-        if allow_resize:
-            self._image_box.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+    def _init_graphics_panes(self, allow_resize: bool):
+        self._graphics = Graphics(self.image_size, allow_resize, parent=self)
 
-        self._image_box.setAlignment(Qt.AlignCenter)
+    def display_target_mesh(self):
+        image = self.target_image_renderer.render()
+        self._graphics.display(image, pane_type=Pane.TARGET)
 
-        self.setCentralWidget(self._image_box)
-
-    def display_rendered_image(self):
-        image = self.mesh_loader.render()
-        self._display_image(image)
+    def display_rendered_mesh(self, image):
+        self._graphics.display(image, pane_type=Pane.RENDER)
 
     def display_texture_map(self):
-        image = self.mesh_loader.get_texture_map()
-        self._display_image(image)
-
-    def _display_image(self, image):
-        pixmap = _img_to_pixmap(image)
-
-        self._image_box.setPixmap(pixmap)
+        image = self.target_image_renderer.get_texture_map()
+        self._graphics.display(image)
 
     def differential_render(self):
         if not self.is_loaded:
@@ -130,7 +104,7 @@ class Viewer(QMainWindow):
 
         self.camera_params = [dist, elev, azim]
 
-        self.display_rendered_image()
+        self.display_target_mesh()
 
         self.prev_pos = (e.x(), e.y())
 
@@ -145,15 +119,20 @@ class Viewer(QMainWindow):
 
         self.camera_params = [dist, elev, azim]
 
-        self.display_rendered_image()
+        self.display_target_mesh()
+
+    def sizeHint(self):
+        width = self._sidebar.width + self._graphics.width
+        height = max(self._sidebar.height, self._graphics.height)
+        return QSize(width, height)
 
     @property
     def camera_params(self):
-        return self.mesh_loader.camera_params
+        return self.target_image_renderer.camera_params
 
     @camera_params.setter
     def camera_params(self, value: list):
-        self.mesh_loader.camera_params = value
+        self.target_image_renderer.camera_params = value
 
         self._status_bar.clearMessage()
         self._status_bar.showMessage(self.camera_params_string)
@@ -166,4 +145,4 @@ class Viewer(QMainWindow):
 
     @property
     def is_loaded(self):
-        return self.mesh_loader.is_loaded
+        return self.target_image_renderer.is_loaded

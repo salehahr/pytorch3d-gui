@@ -4,15 +4,22 @@ import numpy as np
 from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.renderer import FoVPerspectiveCameras, look_at_view_transform, \
     RasterizationSettings, PointLights, MeshRasterizer, MeshRenderer, SoftPhongShader
+from pytorch3d.utils import ico_sphere
 
 
-class MeshLoader(object):
+class ImageRenderer(object):
+    """
+    Renders image from mesh.
+    Lights automatically follow the camera.
+    """
+
     def __init__(self,
+                 image_size: int,
                  device: str = 'cuda:0'):
         self.device = torch.device(device)
         torch.cuda.set_device(self.device)
 
-        self.image_size: int = 256
+        self.image_size = image_size
         self._is_loaded = False
 
         # camera
@@ -21,13 +28,13 @@ class MeshLoader(object):
         self._azimuth = 150
         self._cameras = FoVPerspectiveCameras(device=self.device)
 
-        # _lights
+        # lights
         self._lights = None
         self._initialise_lights()
 
         # renderer
         self.diff_renderer = None
-        self._raster_settings = RasterizationSettings(
+        self._raster_textured = RasterizationSettings(
             image_size=self.image_size,
             blur_radius=0.0,
             faces_per_pixel=1,
@@ -36,7 +43,7 @@ class MeshLoader(object):
         self._initialise_renderer()
 
         # mesh
-        self.mesh = None
+        self._mesh = None
 
     def _initialise_lights(self):
         self._lights = PointLights(device=self.device,
@@ -46,7 +53,7 @@ class MeshLoader(object):
         self.renderer = MeshRenderer(
             rasterizer=MeshRasterizer(
                 cameras=self._cameras,
-                raster_settings=self._raster_settings
+                raster_settings=self._raster_textured
             ),
             shader=SoftPhongShader(
                 device=self.device,
@@ -56,9 +63,15 @@ class MeshLoader(object):
         )
         self.camera_params = self.camera_params
 
+    def __call__(self, *args, **kwargs):
+        # TODO: subclass MeshRenderer
+        return self.renderer(*args, **kwargs)
+
     def load_file(self, filepath: str):
         self.mesh = load_objs_as_meshes([filepath], device=self.device)
-        self._is_loaded = True
+
+    def load_sphere(self):
+        self.mesh = ico_sphere(4, self.device)
 
     def render(self, camera_params=None):
         if camera_params:
@@ -121,8 +134,21 @@ class MeshLoader(object):
             self.renderer.shader.cameras = value
 
     @property
+    def mesh(self):
+        return self._mesh
+
+    @mesh.setter
+    def mesh(self, value):
+        self._mesh = value
+        self.is_loaded = True
+
+    @property
     def is_loaded(self):
         return self._is_loaded
+
+    @is_loaded.setter
+    def is_loaded(self, value):
+        self._is_loaded = value
 
     @property
     def num_views_for_diff_render(self):

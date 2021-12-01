@@ -45,4 +45,4 @@ class CameraParamsWidget(QGroupBox):
 
     def set_dea(self):
         self._main_window.camera_params = self.dea
-        self._main_window.display_rendered_image()
+        self._main_window.display_target_mesh()
