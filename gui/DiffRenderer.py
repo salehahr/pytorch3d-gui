@@ -1,14 +1,14 @@
 import torch
-from pytorch3d.loss import mesh_edge_loss, mesh_normal_consistency, mesh_laplacian_smoothing
 
 from tqdm import tqdm
 import numpy as np
 
 from pytorch3d.renderer import look_at_view_transform, \
-    FoVPerspectiveCameras, PointLights, \
-    RasterizationSettings, \
-    MeshRenderer, MeshRasterizer, SoftPhongShader, TexturesVertex, SoftSilhouetteShader
+    FoVPerspectiveCameras, PointLights, TexturesVertex
 from pytorch3d.utils import ico_sphere
+from pytorch3d.loss import mesh_edge_loss, mesh_normal_consistency, mesh_laplacian_smoothing
+
+from .Graphics import Pane
 
 
 def scale_and_normalise(mesh):
@@ -26,7 +26,7 @@ def scale_and_normalise(mesh):
 class DiffRenderer(object):
     def __init__(self,
                  main_window,
-                 target_image_renderer,
+                 renderer,
                  device: str = 'cuda:0'):
         self.device = torch.device(device)
         self._main_window = main_window
@@ -38,7 +38,7 @@ class DiffRenderer(object):
         self._initial_mesh = initial_mesh
 
         # target
-        self._target_image_renderer = target_image_renderer
+        self.renderer_dynamic = renderer[Pane.TARGET]
         self.num_views = 20
 
         # renderer
@@ -46,9 +46,14 @@ class DiffRenderer(object):
         self.target_cameras = None
         self.lights = PointLights(device=self.device,
                                   location=[[0.0, 0.0, -3.0]])
-        self.renderer_textured = None
-        self.renderer_silhouette = None
-        self._init_renderers()
+        self.renderer_static = renderer[Pane.RENDER]
+
+        self.losses = {"rgb": {"weight": 1.0, "values": []},
+                       "silhouette": {"weight": 1.0, "values": []},
+                       "edge": {"weight": 1.0, "values": []},
+                       "normal": {"weight": 0.01, "values": []},
+                       "laplacian": {"weight": 1.0, "values": []},
+                       }
 
         # initial values
         self.deform_verts = torch.full(initial_vertices_dim,
@@ -65,37 +70,6 @@ class DiffRenderer(object):
         self.optimiser = torch.optim.SGD([self.deform_verts,
                                           self.sphere_verts_rgb],
                                          lr=1.0, momentum=0.9)
-
-    def _init_renderers(self):
-        sigma = 1e-4
-        raster_settings_silhouette = RasterizationSettings(
-            image_size=self.image_size,
-            blur_radius=np.log(1. / 1e-4 - 1.) * sigma,
-            faces_per_pixel=50,
-            perspective_correct=False,
-        )
-
-        renderer_textured = MeshRenderer(
-            rasterizer=MeshRasterizer(
-                raster_settings=raster_settings_silhouette
-            ),
-            shader=SoftPhongShader(device=self.device,
-                                   lights=self.lights)
-        )
-        renderer_silhouette = MeshRenderer(
-            rasterizer=MeshRasterizer(raster_settings=raster_settings_silhouette),
-            shader=SoftSilhouetteShader()
-        )
-
-        self.renderer_textured = renderer_textured
-        self.renderer_silhouette = renderer_silhouette
-
-        self.losses = {"rgb": {"weight": 1.0, "values": []},
-                       "silhouette": {"weight": 1.0, "values": []},
-                       "edge": {"weight": 1.0, "values": []},
-                       "normal": {"weight": 0.01, "values": []},
-                       "laplacian": {"weight": 1.0, "values": []},
-                       }
 
     def render(self):
         target_cameras, target_silhouette, target_rgb = self.generate_views()
@@ -118,12 +92,13 @@ class DiffRenderer(object):
                                                 T=trans[None, i, ...])
                           for i in range(self.num_views)]
 
-        target_images = self._target_image_renderer(target_meshes,
-                                                    cameras=cameras,
-                                                    lights=self.lights)
-        silhouette_images = self.renderer_silhouette(target_meshes,
-                                                     cameras=cameras,
-                                                     lights=self.lights)
+        target_images = self.renderer_dynamic(target_meshes,
+                                              cameras=cameras,
+                                              lights=self.lights)
+        silhouette_images = self.renderer_static(target_meshes,
+                                                 silhouette=True,
+                                                 cameras=cameras,
+                                                 lights=self.lights)
 
         target_silhouette = [silhouette_images[i, ..., 3]
                              for i in range(self.num_views)]
@@ -147,9 +122,9 @@ class DiffRenderer(object):
 
             for j in self.random_views:
                 # learning -- with grad
-                predicted_images = self.renderer_textured(deformed_mesh,
-                                                          cameras=target_cameras[j],
-                                                          lights=self.lights)
+                predicted_images = self.renderer_static(deformed_mesh,
+                                                        cameras=target_cameras[j],
+                                                        lights=self.lights)
 
                 predicted_silhouette = predicted_images[..., 3]
                 loss_silhouette = ((predicted_silhouette - target_silhouette[j]) ** 2).mean()
@@ -168,14 +143,14 @@ class DiffRenderer(object):
 
             if i % self.plot_period == 0:
                 # inference -- no grad
-                self.render_predicted_image(deformed_mesh, title="iter: %d" % i)
+                self.render_predicted_image(deformed_mesh)
 
             sum_loss.backward()
             self.optimiser.step()
 
-    def render_predicted_image(self, predicted_mesh, title):
+    def render_predicted_image(self, predicted_mesh):
         with torch.no_grad():
-            predicted_images = self._target_image_renderer(predicted_mesh)
+            predicted_images = self.renderer_dynamic(predicted_mesh)
 
         image = np.uint8(predicted_images[0, ..., :3].cpu().detach().numpy() * 255)
 
@@ -183,11 +158,11 @@ class DiffRenderer(object):
 
     @property
     def image_size(self):
-        return self._target_image_renderer.image_size
+        return self._main_window.image_size
 
     @property
     def target_mesh(self):
-        return scale_and_normalise(self._target_image_renderer.mesh)
+        return scale_and_normalise(self.renderer_dynamic.mesh)
 
     @property
     def default_camera(self):
@@ -196,8 +171,7 @@ class DiffRenderer(object):
     @default_camera.setter
     def default_camera(self, value):
         self._default_camera = value
-        self.renderer_textured.rasterizer.cameras = value
-        self.renderer_textured.shader.cameras = value
+        self.renderer_static.cameras = value
 
     @property
     def random_views(self):

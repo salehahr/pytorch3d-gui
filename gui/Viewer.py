@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import *
 from .Sidebar import Sidebar
 from .Graphics import Graphics, Pane
 
-from .ImageRenderer import ImageRenderer
+from .ImageRenderer import ImageRendererStatic, ImageRendererDynamic
 from .DiffRenderer import DiffRenderer
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
@@ -24,10 +24,13 @@ class Viewer(QMainWindow):
         # default mesh on startup
         self.filepath = obj_filepath
         self.filename = obj_filename
-        self.target_image_renderer = ImageRenderer(self.image_size, device)
-        self.target_image_renderer.load_file(filepath=obj_filepath)
 
-        self.diff_renderer = DiffRenderer(self, self.target_image_renderer, device)
+        self.static_renderer = ImageRendererStatic(self.image_size, device)
+        self.dynamic_renderer = ImageRendererDynamic(obj_filepath, self.image_size, device)
+        self.renderers = {Pane.RENDER: self.static_renderer,
+                          Pane.TARGET: self.dynamic_renderer
+                          }
+        self.diff_renderer = DiffRenderer(self, self.renderers, device)
 
         self._init_ui(allow_resize)
 
@@ -70,17 +73,19 @@ class Viewer(QMainWindow):
         self._status_bar.showMessage(self.camera_params_string)
 
     def _init_graphics_panes(self, allow_resize: bool):
-        self._graphics = Graphics(self.image_size, allow_resize, parent=self)
+        self._graphics = Graphics(self.image_size,
+                                  self.renderers,
+                                  allow_resize, parent=self)
 
     def display_target_mesh(self):
-        image = self.target_image_renderer.render()
+        image = self.dynamic_renderer.render()
         self._graphics.display(image, pane_type=Pane.TARGET)
 
     def display_rendered_mesh(self, image):
         self._graphics.display(image, pane_type=Pane.RENDER)
 
     def display_texture_map(self):
-        image = self.target_image_renderer.get_texture_map()
+        image = self.dynamic_renderer.get_texture_map()
         self._graphics.display(image)
 
     def differential_render(self):
@@ -128,11 +133,11 @@ class Viewer(QMainWindow):
 
     @property
     def camera_params(self):
-        return self.target_image_renderer.camera_params
+        return self.dynamic_renderer.camera_params
 
     @camera_params.setter
     def camera_params(self, value: list):
-        self.target_image_renderer.camera_params = value
+        self.dynamic_renderer.camera_params = value
 
         self._status_bar.clearMessage()
         self._status_bar.showMessage(self.camera_params_string)
@@ -145,4 +150,4 @@ class Viewer(QMainWindow):
 
     @property
     def is_loaded(self):
-        return self.target_image_renderer.is_loaded
+        return self.dynamic_renderer.is_loaded

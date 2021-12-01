@@ -33,6 +33,7 @@ class Graphics(QLabel):
 
     def __init__(self,
                  image_size: int,
+                 renderers: dict,
                  allow_resize: bool = True,
                  *args, **kwargs):
         super(Graphics, self).__init__(*args, **kwargs)
@@ -40,7 +41,8 @@ class Graphics(QLabel):
         self._image_size = image_size
 
         self._num_panes = len(Pane)
-        self._panes = [GraphicsPane(_id.value, allow_resize) for _id in Pane]
+        self._panes = [GraphicsPane(_id, renderer, allow_resize)
+                       for _id, renderer in renderers.items()]
         self._init_layout()
 
         if allow_resize:
@@ -74,11 +76,14 @@ class Graphics(QLabel):
 class GraphicsPane(QLabel):
     def __init__(self,
                  _id: Pane,
+                 renderer,
                  allow_resize: bool = True,
                  *args, **kwargs):
         super(GraphicsPane, self).__init__(*args, **kwargs)
         self.type = Pane(_id)
         self.id = _id
+
+        self._renderer = renderer
 
         if allow_resize:
             self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
