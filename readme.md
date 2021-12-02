@@ -1,5 +1,8 @@
 # pytorch3d-gui
 
-| &nbsp; | &nbsp; |
-| --- | --- |
-| ![](img/preview.png) | ![eine kuh macht muh](img/cow-lights.gif) |
+![](img/preview.png)  
+
+![](img/preview.gif)
+
+## Acknowledgements
+Inspired by [yeongjoonJu's repo](https://github.com/yeongjoonJu/Mesh-Viewer-using-pytorch3d).
