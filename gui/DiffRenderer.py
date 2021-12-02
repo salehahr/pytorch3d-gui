@@ -1,14 +1,14 @@
 import torch
 
+from typing import Tuple, List
 from tqdm import tqdm
 import numpy as np
 
 from pytorch3d.renderer import look_at_view_transform, \
     FoVPerspectiveCameras, PointLights, TexturesVertex
-from pytorch3d.utils import ico_sphere
 from pytorch3d.loss import mesh_edge_loss, mesh_normal_consistency, mesh_laplacian_smoothing
 
-from .Graphics import Pane
+from .ImageRenderer import ImageRendererStatic
 
 
 def scale_and_normalise(mesh):
@@ -24,46 +24,43 @@ def scale_and_normalise(mesh):
 
 
 class DiffRenderer(object):
-    def __init__(self,
-                 main_window,
-                 renderer,
-                 device: str = 'cuda:0'):
-        self.device = torch.device(device)
-        self._main_window = main_window
+    def __init__(self, render_pane, renderer):
+        self.device = renderer.device
 
-        # initial mesh
-        initial_mesh = ico_sphere(4, device)
+        self._render_pane = render_pane
+
+        # meshes
+        initial_mesh = render_pane.mesh
         initial_vertices_dim = initial_mesh.verts_packed().shape
         num_vertices = initial_vertices_dim[0]
-        self._initial_mesh = initial_mesh
 
-        # target
-        self.renderer_dynamic = renderer[Pane.TARGET]
-        self.num_views = 20
+        self._initial_mesh = initial_mesh
+        self._target_mesh = None
+        self._target_is_set = False
 
         # renderer
-        self._default_camera = None
-        self.target_cameras = None
         self.lights = PointLights(device=self.device,
                                   location=[[0.0, 0.0, -3.0]])
-        self.renderer_static = renderer[Pane.RENDER]
+        self.renderer_dynamic = renderer
+        self.renderer_static = ImageRendererStatic(render_pane.image_size,
+                                                   self.device)
 
         self.losses = {"rgb": {"weight": 1.0, "values": []},
                        "silhouette": {"weight": 1.0, "values": []},
                        "edge": {"weight": 1.0, "values": []},
                        "normal": {"weight": 0.01, "values": []},
-                       "laplacian": {"weight": 1.0, "values": []},
-                       }
+                       "laplacian": {"weight": 1.0, "values": []},}
 
         # initial values
         self.deform_verts = torch.full(initial_vertices_dim,
                                        0.0,
-                                       device=device,
+                                       device=self.device,
                                        requires_grad=True)
         self.sphere_verts_rgb = torch.full([1, num_vertices, 3], 0.5,
-                                           device=device, requires_grad=True)
+                                           device=self.device, requires_grad=True)
 
         # optimiser
+        self.num_views = 20
         self.num_views_per_iteration = 2
         self.num_iter = 100
         self.plot_period = 25
@@ -71,12 +68,21 @@ class DiffRenderer(object):
                                           self.sphere_verts_rgb],
                                          lr=1.0, momentum=0.9)
 
-    def render(self):
+    def set_target_mesh(self, mesh) -> None:
+        self._target_mesh = scale_and_normalise(mesh)
+        self._target_is_set = True
+
+    def render(self) -> None:
+        if not self._target_is_set:
+            return
+
         target_cameras, target_silhouette, target_rgb = self.generate_views()
         self.optimise(target_cameras, target_silhouette, target_rgb)
 
-    def generate_views(self):
-        target_meshes = self.target_mesh.extend(self.num_views)
+    def generate_views(self) -> Tuple[List[FoVPerspectiveCameras],
+                                      List[torch.Tensor],
+                                      List[torch.Tensor]]:
+        target_meshes = self._target_mesh.extend(self.num_views)
 
         elev = torch.linspace(0, 360, self.num_views)
         azim = torch.linspace(-180, 180, self.num_views)
@@ -84,9 +90,7 @@ class DiffRenderer(object):
 
         cameras = FoVPerspectiveCameras(device=self.device,
                                         R=rots, T=trans)
-        self.default_camera = FoVPerspectiveCameras(device=self.device,
-                                                    R=rots[None, 1, ...],
-                                                    T=trans[None, 1, ...])
+
         target_cameras = [FoVPerspectiveCameras(device=self.device,
                                                 R=rots[None, i, ...],
                                                 T=trans[None, i, ...])
@@ -107,7 +111,7 @@ class DiffRenderer(object):
 
         return target_cameras, target_silhouette, target_rgb
 
-    def optimise(self, target_cameras, target_silhouette, target_rgb):
+    def optimise(self, target_cameras, target_silhouette, target_rgb) -> None:
         loop = tqdm(range(self.num_iter))
         for i in loop:
             self.optimiser.zero_grad()
@@ -142,37 +146,15 @@ class DiffRenderer(object):
             loop.set_description("total_loss = %.6f" % sum_loss)
 
             if i % self.plot_period == 0:
-                # inference -- no grad
-                self.render_predicted_image(deformed_mesh)
+                self._render_pane.mesh = deformed_mesh
 
             sum_loss.backward()
             self.optimiser.step()
 
-    def render_predicted_image(self, predicted_mesh):
-        with torch.no_grad():
-            predicted_images = self.renderer_dynamic(predicted_mesh)
-
-        image = np.uint8(predicted_images[0, ..., :3].cpu().detach().numpy() * 255)
-
-        self._main_window.display_rendered_mesh(image)
+    @property
+    def image_size(self) -> int:
+        return self._render_pane.image_size
 
     @property
-    def image_size(self):
-        return self._main_window.image_size
-
-    @property
-    def target_mesh(self):
-        return scale_and_normalise(self.renderer_dynamic.mesh)
-
-    @property
-    def default_camera(self):
-        return self._default_camera
-
-    @default_camera.setter
-    def default_camera(self, value):
-        self._default_camera = value
-        self.renderer_static.cameras = value
-
-    @property
-    def random_views(self):
+    def random_views(self) -> list:
         return np.random.permutation(self.num_views).tolist()[:self.num_views_per_iteration]

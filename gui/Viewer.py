@@ -1,98 +1,81 @@
 import os
 
+from typing import Optional
+
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import QWidget, QMainWindow, QToolBar, QLabel
 
 from .Sidebar import Sidebar
-from .Graphics import Graphics, Pane
-
-from .ImageRenderer import ImageRendererStatic, ImageRendererDynamic
-from .DiffRenderer import DiffRenderer
+from .Graphics import Graphics
+from .Panes import Panes
 
 obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)
-device = 'cuda:0'
+device_str = 'cuda:0'
 
 
 class Viewer(QMainWindow):
-    def __init__(self,
-                 allow_resize: bool = True):
+    def __init__(self):
         super(Viewer, self).__init__()
 
-        self.image_size = 256
-
         # default mesh on startup
-        self.filepath = obj_filepath
+        self.image_size = 256
+        self.filepath: str = obj_filepath
         self.filename = obj_filename
 
-        self.static_renderer = ImageRendererStatic(self.image_size, device)
-        self.dynamic_renderer = ImageRendererDynamic(obj_filepath, self.image_size, device)
-        self.renderers = {Pane.RENDER: self.static_renderer,
-                          Pane.TARGET: self.dynamic_renderer
-                          }
-        self.diff_renderer = DiffRenderer(self, self.renderers, device)
-
-        self._init_ui(allow_resize)
+        # ui elements
+        self._sidebar: Optional[QWidget] = None
+        self._status_bar: Optional[QWidget] = None
+        self._graphics: Optional[QWidget] = None
+        self._target_pane: Optional[QWidget] = None
+        self._render_pane: Optional[QWidget] = None
+        self._init_ui()
 
         # camera params
         self.prev_pos = (0, 0)
-        self.display_target_mesh()
 
         self.resize(self.sizeHint())
         self.show()
 
-    def _init_ui(self, allow_resize):
+    def _init_ui(self) -> None:
         # self._init_menu_bar()
         # self._init_tool_bar()
+
+        self._init_graphics()
+        self.setCentralWidget(self._graphics)
+
         self._init_sidebar()
         self._init_status_bar()
 
-        self._init_graphics_panes(allow_resize)
-        self.setCentralWidget(self._graphics)
-
         self.setWindowTitle(f"Viewer - {self.filepath}")
 
-    def _init_menu_bar(self):
+    def _init_menu_bar(self) -> None:
         menu_bar = self.menuBar()
         label = 'TEST'
         menu_bar.addMenu(label)
 
-    def _init_tool_bar(self):
+    def _init_tool_bar(self) -> None:
         file_tool_bar = QToolBar("File")
         file_tool_bar.addWidget(QLabel("File: "))
         file_tool_bar.addWidget(QLabel(f'{self.filename}'))
 
         self._file_tool_bar = self.addToolBar(file_tool_bar)
 
-    def _init_sidebar(self):
-        self._sidebar = Sidebar(self, self.camera_params, '')
+    def _init_sidebar(self) -> None:
+        self._sidebar = Sidebar(self._graphics, '')
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._sidebar)
 
-    def _init_status_bar(self):
+    def _init_status_bar(self) -> None:
         self._status_bar = self.statusBar()
-        self._status_bar.showMessage(self.camera_params_string)
+        self._status_bar.showMessage(self._graphics.camera_params_string)
 
-    def _init_graphics_panes(self, allow_resize: bool):
-        self._graphics = Graphics(self.image_size,
-                                  self.renderers,
-                                  allow_resize, parent=self)
+    def _init_graphics(self) -> None:
+        self._graphics = Graphics(self.image_size, parent=self)
 
-    def display_target_mesh(self):
-        image = self.dynamic_renderer.render()
-        self._graphics.display(image, pane_type=Pane.TARGET)
+        self._target_pane = self._graphics.get_pane(Panes.TARGET)
+        self._render_pane = self._graphics.get_pane(Panes.RENDER)
 
-    def display_rendered_mesh(self, image):
-        self._graphics.display(image, pane_type=Pane.RENDER)
-
-    def display_texture_map(self):
-        image = self.dynamic_renderer.get_texture_map()
-        self._graphics.display(image)
-
-    def differential_render(self):
-        if not self.is_loaded:
-            return
-
-        self.diff_renderer.render()
+        self._target_pane.load_mesh(obj_filepath)
 
     def mousePressEvent(self, e):
         self.prev_pos = (e.x(), e.y())
@@ -109,8 +92,6 @@ class Viewer(QMainWindow):
 
         self.camera_params = [dist, elev, azim]
 
-        self.display_target_mesh()
-
         self.prev_pos = (e.x(), e.y())
 
     def wheelEvent(self, e):
@@ -124,30 +105,23 @@ class Viewer(QMainWindow):
 
         self.camera_params = [dist, elev, azim]
 
-        self.display_target_mesh()
-
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
         width = self._sidebar.width + self._graphics.width
         height = max(self._sidebar.height, self._graphics.height)
         return QSize(width, height)
 
     @property
-    def camera_params(self):
-        return self.dynamic_renderer.camera_params
+    def render_pane(self) -> QWidget:
+        return self._render_pane
+
+    @property
+    def camera_params(self) -> list:
+        return self._graphics.camera_params
 
     @camera_params.setter
     def camera_params(self, value: list):
-        self.dynamic_renderer.camera_params = value
-
-        self._status_bar.clearMessage()
-        self._status_bar.showMessage(self.camera_params_string)
+        self._graphics.camera_params = value
 
     @property
-    def camera_params_string(self):
-        return f'Distance: {self.camera_params[0]:000.1f} | ' \
-               + f'Azimuth: {self.camera_params[1]:000.0f} | ' \
-               + f'Elevation: {self.camera_params[2]:000.0f}'
-
-    @property
-    def is_loaded(self):
-        return self.dynamic_renderer.is_loaded
+    def is_loaded(self) -> bool:
+        return self._graphics.is_loaded

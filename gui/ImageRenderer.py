@@ -1,16 +1,20 @@
 import torch
+
+from typing import Optional, Tuple
 import numpy as np
 
-from pytorch3d.io import load_objs_as_meshes
-from pytorch3d.renderer import FoVPerspectiveCameras, look_at_view_transform, \
-    RasterizationSettings, PointLights, MeshRasterizer, MeshRenderer, SoftPhongShader, SoftSilhouetteShader
-from pytorch3d.utils import ico_sphere
+from pytorch3d.renderer import (
+    look_at_view_transform,
+    FoVPerspectiveCameras, PointLights,
+    RasterizationSettings,
+    MeshRasterizer, MeshRenderer,
+    SoftPhongShader, SoftSilhouetteShader
+)
 
 
 class ImageRenderer(object):
     """
     Renders image from mesh.
-    Lights automatically follow the camera.
     """
 
     def __init__(self,
@@ -20,10 +24,6 @@ class ImageRenderer(object):
         torch.cuda.set_device(self.device)
 
         self.image_size = image_size
-        self._is_loaded = False
-
-        # mesh
-        self._mesh = None
 
         # camera
         self._distance = 2.7
@@ -32,20 +32,20 @@ class ImageRenderer(object):
         self._cameras = FoVPerspectiveCameras(device=self.device)
 
         # lights
-        self._lights = None
+        self._lights: Optional[PointLights] = None
         self._light_location = [[0.0, 0.0, -3.0]]
         self._initialise_lights()
 
         # renderer
-        self.r_textured = None
+        self.r_textured: MeshRenderer = None
         self._initialise_renderer()
         self.camera_params = self.camera_params
 
-    def _initialise_lights(self):
+    def _initialise_lights(self) -> None:
         self._lights = PointLights(device=self.device,
                                    location=self.light_location)
 
-    def _initialise_renderer(self):
+    def _initialise_renderer(self) -> None:
         raster_textured = RasterizationSettings(
             image_size=self.image_size,
             blur_radius=0.0,
@@ -67,110 +67,96 @@ class ImageRenderer(object):
         # TODO: subclass MeshRenderer
         return self.r_textured(*args, **kwargs)
 
-    def load_file(self, filepath: str):
-        self.mesh = load_objs_as_meshes([filepath], device=self.device)
-
-    def load_sphere(self):
-        self.mesh = ico_sphere(4, self.device)
-
-    def render(self, camera_params=None):
+    def render(self, mesh, camera_params: Optional[list] = None) -> np.ndarray:
         if camera_params:
             self.camera_params = camera_params
-        return self._get_rendered_image()
+        return self._get_rendered_image(mesh)
 
-    def _get_rendered_image(self):
-        image_tensor = self.r_textured(self.mesh)
+    def _get_rendered_image(self, mesh) -> np.ndarray:
+        image_tensor = self.r_textured(mesh)
         np_image = image_tensor[0, ..., :3].cpu().numpy() * 255
 
         return np.uint8(np_image)
 
-    def get_texture_map(self) -> np.ndarray:
-        texture_image = self.mesh.textures.maps_padded() * 255
-        np_img = texture_image.squeeze().cpu().numpy().astype(np.uint8)
-
-        self.image_size = max(np_img.shape[0:2])
-
-        return np_img
-
     @property
-    def light_location(self):
+    def light_location(self) -> list:
         return self._light_location
 
     @light_location.setter
-    def light_location(self, value):
+    def light_location(self, value: list) -> None:
+        """ Setting the light location automatically updates the lights object."""
         self._light_location = value
+        self.lights = PointLights(device=self.device,
+                                  location=self.light_location)
 
     @property
-    def lights(self):
+    def lights(self) -> PointLights:
         return self._lights
 
     @lights.setter
-    def lights(self, value):
+    def lights(self, value: PointLights) -> None:
+        """ Setting the lights automatically updates the renderer object. """
         self._lights = value
         if self.r_textured:
             self.r_textured.shader.lights = self._lights
 
     @property
-    def camera_params(self):
+    def camera_params(self) -> Tuple[float, float, float]:
         return self._distance, self._elevation, self._azimuth
 
     @camera_params.setter
-    def camera_params(self, value: list):
+    def camera_params(self, value: list) -> None:
+        """ Setting the camera params automatically updates the camera object. """
         self._distance, self._elevation, self._azimuth = value
 
         rot, trans = look_at_view_transform(*self.camera_params)
         self.cameras = FoVPerspectiveCameras(device=self.device, R=rot, T=trans)
 
     @property
-    def cameras(self):
+    def cameras(self) -> FoVPerspectiveCameras:
         return self._cameras
 
     @cameras.setter
-    def cameras(self, value):
+    def cameras(self, value: FoVPerspectiveCameras) -> None:
+        """ Setting the camera value automatically updates the renderer object. """
         self._cameras = value
         if self.r_textured:
             self.r_textured.rasterizer.cameras = value
             self.r_textured.shader.cameras = value
 
-    @property
-    def mesh(self):
-        return self._mesh
-
-    @mesh.setter
-    def mesh(self, value):
-        self._mesh = value
-        self._is_loaded = True if value else False
-
-    @property
-    def is_loaded(self):
-        return self._is_loaded
-
 
 class ImageRendererDynamic(ImageRenderer):
-    def __init__(self, filepath, *args, **kwargs):
+    """
+    Renders image from mesh.
+    Lights automatically follow the camera.
+    """
+    def __init__(self, *args, **kwargs):
         super(ImageRendererDynamic, self).__init__(*args, **kwargs)
-        self.load_file(filepath)
 
     @property
     def light_location(self):
+        """ The light location is the camera centre. """
         return self._cameras.get_camera_center()
 
     @light_location.setter
-    def light_location(self, value):
+    def light_location(self, value: list) -> None:
         ImageRenderer.light_location.fset(self, value)
-        self.lights = PointLights(device=self.device,
-                                  location=self.light_location)
 
     @ImageRenderer.camera_params.setter
-    def camera_params(self, value):
+    def camera_params(self, value: list) -> None:
+        """ Updating the camera parameters involves relocating the light. """
         ImageRenderer.camera_params.fset(self, value)
         self.light_location = self.light_location
 
 
 class ImageRendererStatic(ImageRenderer):
+    """
+    Renders image from mesh.
+    Has a silhouette renderer in addition to the textured renderer.
+    """
     def __init__(self, *args, **kwargs):
-        self.r_textured = None
-        self.r_silhouette = None
+        self.r_textured: Optional[MeshRenderer] = None
+        self.r_silhouette: Optional[MeshRenderer] = None
 
         super(ImageRendererStatic, self).__init__(*args, **kwargs)
 
@@ -184,7 +170,7 @@ class ImageRendererStatic(ImageRenderer):
         else:
             return super().__call__(*args, **kwargs)
 
-    def _initialise_renderer(self):
+    def _initialise_renderer(self) -> None:
         sigma = 1e-4
         raster_silhouette = RasterizationSettings(
             image_size=self.image_size,
@@ -193,6 +179,7 @@ class ImageRendererStatic(ImageRenderer):
             perspective_correct=False,
         )
 
+        # differentiable soft renderer using per vertex RGB for texture
         renderer_textured = MeshRenderer(
             rasterizer=MeshRasterizer(raster_settings=raster_silhouette),
             shader=SoftPhongShader(device=self.device,
