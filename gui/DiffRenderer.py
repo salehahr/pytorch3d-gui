@@ -1,9 +1,13 @@
 import torch
 
 from typing import Tuple, List
+
 from tqdm import tqdm
 import numpy as np
 
+from PyQt5.QtCore import QObject, pyqtSignal
+
+from pytorch3d.structures import Meshes
 from pytorch3d.renderer import look_at_view_transform, \
     FoVPerspectiveCameras, PointLights, TexturesVertex
 from pytorch3d.loss import mesh_edge_loss, mesh_normal_consistency, mesh_laplacian_smoothing
@@ -23,8 +27,13 @@ def scale_and_normalise(mesh):
     return new_mesh
 
 
-class DiffRenderer(object):
-    def __init__(self, render_pane, renderer):
+class DiffRenderer(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(Meshes)
+
+    def __init__(self, render_pane, renderer,
+                 *args, **kwargs):
+        super(DiffRenderer, self).__init__(*args, **kwargs)
         self.device = renderer.device
 
         self._render_pane = render_pane
@@ -78,6 +87,8 @@ class DiffRenderer(object):
 
         target_cameras, target_silhouette, target_rgb = self.generate_views()
         self.optimise(target_cameras, target_silhouette, target_rgb)
+
+        self.finished.emit()
 
     def generate_views(self) -> Tuple[List[FoVPerspectiveCameras],
                                       List[torch.Tensor],
@@ -146,10 +157,13 @@ class DiffRenderer(object):
             loop.set_description("total_loss = %.6f" % sum_loss)
 
             if i % self.plot_period == 0:
-                self._render_pane.mesh = deformed_mesh
+                self.progress.emit(deformed_mesh)
 
             sum_loss.backward()
             self.optimiser.step()
+
+    def move_to_thread(self, thread):
+        self.moveToThread(thread)
 
     @property
     def image_size(self) -> int:
