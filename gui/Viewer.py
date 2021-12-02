@@ -13,6 +13,8 @@ obj_filepath = '/graphics/scratch/schuelej/sar/pytorch3d-gui/data/cow.obj'
 obj_filename = os.path.basename(obj_filepath)
 device_str = 'cuda:0'
 
+BACKGROUND_COLOUR = (239, 235, 231)
+
 
 class Viewer(QMainWindow):
     def __init__(self):
@@ -70,7 +72,9 @@ class Viewer(QMainWindow):
         self._status_bar.showMessage(self._graphics.camera_params_string)
 
     def _init_graphics(self) -> None:
-        self._graphics = Graphics(self.image_size, parent=self)
+        self._graphics = Graphics(self.image_size,
+                                  background_colour=BACKGROUND_COLOUR,
+                                  parent=self)
 
         self._target_pane = self._graphics.get_pane(Panes.TARGET)
         self._render_pane = self._graphics.get_pane(Panes.RENDER)

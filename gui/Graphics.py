@@ -38,12 +38,13 @@ class Graphics(QLabel):
 
     def __init__(self,
                  image_size: int,
+                 background_colour: tuple,
                  allow_resize: bool = True,
                  *args, **kwargs):
         super(Graphics, self).__init__(*args, **kwargs)
 
         self._image_size = image_size
-        self._renderer = ImageRendererDynamic(image_size)
+        self._renderer = ImageRendererDynamic(background_colour, image_size)
 
         self._num_panes = len(Panes)
         self._panes = [GraphicsPane(_id, self._renderer, image_size, allow_resize)
@@ -55,6 +56,7 @@ class Graphics(QLabel):
 
         self.diff_renderer = DiffRenderer(self._panes[Panes.RENDER.value], self._renderer)
 
+        self.setStyleSheet(f'background-color: rgb{str(background_colour)};')
         self.setAlignment(Qt.AlignCenter)
 
     def _init_layout(self) -> None:

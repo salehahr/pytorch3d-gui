@@ -8,7 +8,7 @@ from pytorch3d.renderer import (
     FoVPerspectiveCameras, PointLights,
     RasterizationSettings,
     MeshRasterizer, MeshRenderer,
-    SoftPhongShader, SoftSilhouetteShader
+    SoftPhongShader, SoftSilhouetteShader, BlendParams
 )
 
 
@@ -130,8 +130,13 @@ class ImageRendererDynamic(ImageRenderer):
     Renders image from mesh.
     Lights automatically follow the camera.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, background_colour: tuple, *args, **kwargs):
         super(ImageRendererDynamic, self).__init__(*args, **kwargs)
+
+        background = tuple([x/255 for x in background_colour])
+
+        self.r_textured.shader.blend_params = BlendParams(1e-4, 1e-4,
+                                                          background)
 
     @property
     def light_location(self):

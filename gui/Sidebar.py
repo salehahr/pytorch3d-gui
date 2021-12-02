@@ -1,3 +1,4 @@
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QDockWidget, QVBoxLayout
 
 from .CameraParamsWidget import CameraParamsWidget
@@ -25,5 +26,14 @@ class Sidebar(QDockWidget):
         multi_widget = QWidget()
         multi_widget.setLayout(layout)
 
-        self.setFloating(False)
+        self.setFeatures(QDockWidget.NoDockWidgetFeatures)
+
         self.setWidget(multi_widget)
+
+        for c in multi_widget.children():
+            if isinstance(c, QVBoxLayout):
+                continue
+
+            c.setFixedHeight(c.sizeHint().height())
+
+        layout.setAlignment(Qt.AlignTop)
