@@ -20,6 +20,7 @@ class DiffRenderWidget(QGroupBox):
         self._init_layout()
 
     def _init_layout(self) -> None:
+        # TODO: add renderer settings
         self._button.clicked.connect(self._worker.render)
         self._button.clicked.connect(self._disable_button)
 

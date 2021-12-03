@@ -18,6 +18,7 @@ BACKGROUND_COLOUR = (239, 235, 231)
 
 class Viewer(QMainWindow):
     def __init__(self):
+        # TODO: add progress bar to gui
         super(Viewer, self).__init__()
 
         # default mesh on startup
